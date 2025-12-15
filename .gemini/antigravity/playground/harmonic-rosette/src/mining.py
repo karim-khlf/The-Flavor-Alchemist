@@ -1,13 +1,10 @@
 import pandas as pd
 from mlxtend.preprocessing import TransactionEncoder
-from mlxtend.frequent_patterns import fpgrowth, association_rules
+from mlxtend.frequent_patterns import fpgrowth, association_rules, apriori
 from src.cleaner import load_and_clean_data
-import pickle
-import os
-
 CACHE_PATH = "data/rules_cache.pkl"
 
-def mine_rules(min_support=0.01, min_confidence=0.1):
+def mine_rules(apriori_min_support=0.01, fp_growth_min_support=0.01, apriori_min_confidence=0.1, fp_growth_min_confidence=0.1):
     """
     Mines association rules from the recipe dataset.
     """
@@ -22,22 +19,41 @@ def mine_rules(min_support=0.01, min_confidence=0.1):
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
     df = pd.DataFrame(te_ary, columns=te.columns_)
-
-    print(f"Running FP-Growth with min_support={min_support}...")
-    frequent_itemsets = fpgrowth(df, min_support=min_support, use_colnames=True)
     
-    print(f"Found {len(frequent_itemsets)} frequent itemsets.")
-    if frequent_itemsets.empty:
+    print(f"Running Apriori algorithm with min_support={apriori_min_support}...")
+    apriori_frequent_itemsets = apriori(df, min_support=apriori_min_support, use_colnames=True)
+    print(f"Found {len(apriori_frequent_itemsets)} frequent itemsets with Apriori.")
+    if apriori_frequent_itemsets.empty:
+        return pd.DataFrame()
+    print(f"Generating rules with min_confidence={apriori_min_confidence}...")
+    apriori_rules = association_rules(apriori_frequent_itemsets, metric="confidence", min_threshold=apriori_min_confidence)
+    apriori_rules = apriori_rules.sort_values(['lift', 'confidence'], ascending=[False, False])
+    print(f"Generated {len(apriori_rules)} rules with Apriori.")
+    avg_lift_apriori = apriori_rules['lift'].mean() if not apriori_rules.empty else 0
+    print(f"Average lift of Apriori rules: {avg_lift_apriori:.4f}")
+    avg_confidence_apriori = apriori_rules['confidence'].mean() if not apriori_rules.empty else 0
+    print(f"Average confidence of Apriori rules: {avg_confidence_apriori:.4f}")
+    
+    print(f"Running FP-Growth with min_support={fp_growth_min_support}...")
+    fp_growth_frequent_itemsets = fpgrowth(df, min_support=fp_growth_min_support, use_colnames=True)
+    
+    print(f"Found {len(fp_growth_frequent_itemsets)} frequent itemsets.")
+    if fp_growth_frequent_itemsets.empty:
         return pd.DataFrame()
 
-    print(f"Generating rules with min_confidence={min_confidence}...")
-    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+    print(f"Generating rules with min_confidence={fp_growth_min_confidence}...")
+    fp_growth_rules = association_rules(fp_growth_frequent_itemsets, metric="confidence", min_threshold=fp_growth_min_confidence)
     
     # Add 'lift' and sort
-    rules = rules.sort_values(['lift', 'confidence'], ascending=[False, False])
+    fp_growth_rules = fp_growth_rules.sort_values(['lift', 'confidence'], ascending=[False, False])
     
-    print(f"Generated {len(rules)} rules.")
-    return rules
+    print(f"Generated {len(fp_growth_rules)} rules.")
+    avg_lift_fp_growth = fp_growth_rules['lift'].mean() if not fp_growth_rules.empty else 0
+    print(f"Average lift of FP-Growth rules: {avg_lift_fp_growth:.4f}")
+    avg_confidence_fp_growth = fp_growth_rules['confidence'].mean() if not fp_growth_rules.empty else 0
+    print(f"Average confidence of FP-Growth rules: {avg_confidence_fp_growth:.4f}")
+    
+    return fp_growth_rules
 
 def get_recommendations(rules, ingredients, top_k=5):
     """
@@ -58,11 +74,6 @@ def get_recommendations(rules, ingredients, top_k=5):
     
     suggestions = []
     
-    # Heuristic: Check rules where consequent is NOT in input
-    # and antecedent is in input (or close to it)
-    
-    # Relaxed Logic: Check rules where antecedent has ANY overlap with input
-    # This allows users to find associations even if they don't have the full antecedent
     relevant_rules = rules[rules['antecedents'].apply(lambda x: not x.isdisjoint(input_set))]
     
     for _, row in relevant_rules.iterrows():

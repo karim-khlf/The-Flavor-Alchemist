@@ -8,8 +8,8 @@ from src.cleaner import load_and_clean_data
 st.set_page_config(page_title="The Flavor Alchemist", page_icon="🧪", layout="wide")
 
 @st.cache_resource
-def load_resources(min_supp, min_conf):
-    return mine_rules(min_support=min_supp, min_confidence=min_conf)
+def load_resources(apriori_min_supp, fp_growth_min_support, apriori_min_conf, fp_growth_min_conf):
+    return mine_rules(apriori_min_supp, fp_growth_min_support, apriori_min_conf, fp_growth_min_conf)
 
 @st.cache_data
 def get_all_ingredients():
@@ -19,16 +19,16 @@ def get_all_ingredients():
 
 st.title("🧪 The Flavor Alchemist")
 st.markdown("""
-**Discover hidden culinary connections using Unsupervised Machine Learning.**
-Select ingredients you have, and we will suggest what else goes well with them!
+***Select ingredients you have, and we will suggest what else goes well with them!***
 """)
 
 sidebar = st.sidebar
-sidebar.header("Configuration")
 # Tuned for Large Dataset (800k+ recipes)
 # Higher support needed to avoid OOM or slow mining on start
-min_support = sidebar.slider("Min Support", 0.001, 0.2, 0.05, 0.005)
-min_confidence = sidebar.slider("Min Confidence", 0.01, 1.0, 0.1, 0.01)
+apriori_min_support = 0.03
+apriori_min_confidence = 0.33
+fp_growth_min_support = 0.02
+fp_growth_min_confidence = 0.6
 
 if sidebar.button("Retrain Model"):
     st.cache_resource.clear()
@@ -39,7 +39,7 @@ with st.spinner("Loading pantry..."):
 
 # Load rules
 with st.spinner("Brewing potions (Mining Rules)..."):
-    rules = load_resources(min_support, min_confidence)
+    rules = load_resources(apriori_min_support, fp_growth_min_support, apriori_min_confidence, fp_growth_min_confidence)
 
 if rules is not None and not rules.empty:
     st.success(f"Model ready! Discovered {len(rules)} association rules.")
